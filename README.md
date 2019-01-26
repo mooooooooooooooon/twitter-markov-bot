@@ -21,13 +21,13 @@
 1. At project root, `nano .env`
 2. Paste this:
 
-  ```
-  TWITTER_CONSUMER_KEY=<your consumer key>
-  TWITTER_CONSUMER_SECRET=<your consumer secret>
-  TWITTER_ACCESS_TOKEN_KEY=<your access token key>
-  TWITTER_ACCESS_TOKEN_SECRET=<your access token secret>
-  TWITTER_USER=<@username of account to seed generator with>
-  ```
+    ```
+    TWITTER_CONSUMER_KEY=<your consumer key>
+    TWITTER_CONSUMER_SECRET=<your consumer secret>
+    TWITTER_ACCESS_TOKEN_KEY=<your access token key>
+    TWITTER_ACCESS_TOKEN_SECRET=<your access token secret>
+    TWITTER_USER=<@username of account to seed generator with>
+    ```
 
 ## Deployment
 
