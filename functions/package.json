@@ -8,6 +8,7 @@
     "dotenv": "^6.2.0",
     "firebase-admin": "^6.5.1",
     "firebase-functions": "^2.1.0",
+    "html-entities": "^1.2.1",
     "into-stream": "^4.0.0",
     "markov": "0.0.7",
     "twitter": "^1.7.1"

@@ -4,6 +4,7 @@ const admin = require('firebase-admin')
 const Twitter = require('twitter')
 const intoStream = require('into-stream')
 const markov = require('markov')
+const Entities = require('html-entities').AllHtmlEntities
 
 admin.initializeApp()
 const db = admin.firestore()
@@ -19,6 +20,7 @@ const tweetsRef = db.collection('tweets')
 const tweetsBy = userId => tweetsRef.where('user_id', '==', userId)
 
 const ingest = async () => {
+  const entities = new Entities()
   const getBounds = async q => {
     const first = async (...args) =>
       (await q.orderBy(...args).limit(1).get()).docs[0].data().id
@@ -42,7 +44,7 @@ const ingest = async () => {
   const addTweets = tweets => tweets.forEach(async tweet => {
     await tweetsRef.doc(tweet.id_str).set({
       id: tweet.id,
-      body: tweet.text,
+      body: entities.decode(tweet.text),
       user_id: await userId
     })
   })
@@ -68,11 +70,11 @@ const compose = id => new Promise(async resolve => {
   const save = async tweet =>
     await db.doc(`drafts/${id}`).set({body: tweet}) && resolve(tweet)
   const cb = () => {
-    const tweet = m.forward(m.pick(), 10).join(' ')
-    if (tweet.length < 10) cb()
+    const tweet = m.forward(m.pick(), 15).join(' ')
+    if (280 < tweet.length || tweet.length < 30) cb()
     else save(tweet)
   }
-  const m = markov(2)
+  const m = markov(1)
   m.seed(intoStream(seeds), cb)
 })
 
