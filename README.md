@@ -18,7 +18,7 @@
 4. Create a Firebase project associated with your Developers Console project
 
 ### Configure Twitter
-1. At project root, `nano .env`
+1. At project root, `nano functions/.env`
 2. Paste this:
 
     ```
