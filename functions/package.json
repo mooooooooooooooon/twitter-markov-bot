@@ -10,7 +10,6 @@
     "firebase-functions": "^2.1.0",
     "into-stream": "^4.0.0",
     "markov": "0.0.7",
-    "markov-strings": "^2.0.1",
     "twitter": "^1.7.1"
   },
   "private": true

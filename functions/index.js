@@ -5,7 +5,6 @@ const Twitter = require('twitter')
 const intoStream = require('into-stream')
 const markov = require('markov')
 
-
 admin.initializeApp()
 const db = admin.firestore()
 db.settings({timestampsInSnapshots: true})
@@ -20,15 +19,13 @@ const tweetsRef = db.collection('tweets')
 const tweetsBy = userId => tweetsRef.where('user_id', '==', userId)
 
 const ingest = async () => {
-  const getBounds = async query => {
-    const first = async (...args) => {
-      const qs = await query.orderBy(...args).limit(1).get()
-      return qs.docs[0].data().id
-    }
-    const qs = await query.get()
+  const getBounds = async q => {
+    const first = async (...args) =>
+      (await q.orderBy(...args).limit(1).get()).docs[0].data().id
+    const empty = (await q.get()).empty
     return {
-      oldest: qs.empty ? null : await first('id') - 1,
-      newest: qs.empty ? null : await first('id', 'desc')
+      oldest: empty ? null : await first('id') - 1,
+      newest: empty ? null : await first('id', 'desc')
     }
   }
   const fetchTweets = options => new Promise(async (resolve, reject) => {
@@ -37,8 +34,8 @@ const ingest = async () => {
       count: 200,
       include_rts: false,
       ...options
-    }, (err, tweets, _res) => {
-      if (err) reject(new Error(err))
+    }, (err, tweets) => {
+      err && reject(new Error(err))
       resolve(tweets)
     })
   })
@@ -53,8 +50,8 @@ const ingest = async () => {
   const userId = new Promise((resolve, reject) => twitter.get(
     'users/show',
     {screen_name: process.env.TWITTER_USER},
-    (err, user, _res) => {
-      if (err) reject(new Error(err))
+    (err, user) => {
+      err && reject(new Error(err))
       resolve(user.id)
     }
   ))
@@ -67,11 +64,9 @@ const ingest = async () => {
 }
 
 const compose = id => new Promise(async resolve => {
-  const seeds = (await (await tweetsBy(id)).get()).docs.map(x => `${x.data().body}\n`)
-  const save = async tweet => {
-    await db.doc(`drafts/${id}`).set({body: tweet})
-    resolve(tweet)
-  }
+  const seeds = (await tweetsBy(id).get()).docs.map(x => `${x.data().body}\n`)
+  const save = async tweet =>
+    await db.doc(`drafts/${id}`).set({body: tweet}) && resolve(tweet)
   const cb = () => {
     const tweet = m.forward(m.pick(), 10).join(' ')
     if (tweet.length < 10) cb()
@@ -87,6 +82,6 @@ exports.ingest = functions.pubsub
 
 exports.compose = functions.firestore
   .document(`users/{userId}`)
-  .onWrite(async (change, ctx) =>
-    change.after.exists && await compose(parseInt(ctx.params.userId))
+  .onWrite(async (snap, ctx) =>
+    snap.after.exists && await compose(parseInt(ctx.params.userId))
   )
