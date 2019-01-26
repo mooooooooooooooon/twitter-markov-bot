@@ -26,7 +26,7 @@
     TWITTER_CONSUMER_SECRET=<your consumer secret>
     TWITTER_ACCESS_TOKEN_KEY=<your access token key>
     TWITTER_ACCESS_TOKEN_SECRET=<your access token secret>
-    TWITTER_USER=<@username of account to seed generator with>
+    TWITTER_USER=<@username of account to seed generator with (no @ symbol)>
     ```
 
 ## Deployment
