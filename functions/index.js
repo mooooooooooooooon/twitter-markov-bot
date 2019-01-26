@@ -2,9 +2,13 @@ require('dotenv').config()
 const functions = require('firebase-functions')
 const admin = require('firebase-admin')
 const Twitter = require('twitter')
+const intoStream = require('into-stream')
+const markov = require('markov')
+
 
 admin.initializeApp()
 const db = admin.firestore()
+db.settings({timestampsInSnapshots: true})
 
 const twitter = new Twitter({
   consumer_key        : process.env.TWITTER_CONSUMER_KEY,
@@ -12,67 +16,77 @@ const twitter = new Twitter({
   access_token_key    : process.env.TWITTER_ACCESS_TOKEN_KEY,
   access_token_secret : process.env.TWITTER_ACCESS_TOKEN_SECRET
 })
+const tweetsRef = db.collection('tweets')
+const tweetsBy = userId => tweetsRef.where('user_id', '==', userId)
 
-const ingestTweets = handle => new Promise(resolve => {
-  twitter.get('users/show', {screen_name: handle}, async (err, user, res) => {
-    if (err) throw err
-    const userId = user.id
-
-    const getTweetBounds = query => {
-      new Promise(async resolve => {
-        const tweetIds = {newest: null, oldest: null}
-        const qs = await query.get()
-        if (!qs.empty) {
-          const first = (...args) => new Promise(async resolve => {
-            const qs = await query.orderBy(...args).limit(1).get()
-            resolve(qs.docs[0].data().id)
-          })
-          tweetIds.oldest = await first('id') - 1,
-          tweetIds.newest = await first('id', 'desc')
-        }
-        resolve(tweetIds)
-      })
+const ingest = async () => {
+  const getBounds = async query => {
+    const first = async (...args) => {
+      const qs = await query.orderBy(...args).limit(1).get()
+      return qs.docs[0].data().id
     }
-    const getTweets = async (options, cb) => {
-      new Promise(resolve => {
-        twitter.get('statuses/user_timeline', {
-          user_id: userId,
-          count: 200,
-          include_rts: false,
-          ...options
-        }, (err, tweets, res) => {
-          if (err) throw err
-          cb(tweets)
-          resolve()
-        })
-      })
+    const qs = await query.get()
+    return {
+      oldest: qs.empty ? null : await first('id') - 1,
+      newest: qs.empty ? null : await first('id', 'desc')
     }
-    const addTweets = tweets => tweets.forEach(async (tweet) => {
-      await tweetsRef.doc(tweet.id_str).set({
-        id: tweet.id,
-        body: tweet.text,
-        user_id: userId
-      })
+  }
+  const fetchTweets = options => new Promise(async (resolve, reject) => {
+    twitter.get('statuses/user_timeline', {
+      user_id: await userId,
+      count: 200,
+      include_rts: false,
+      ...options
+    }, (err, tweets, _res) => {
+      if (err) reject(new Error(err))
+      resolve(tweets)
     })
-
-    const tweetsRef = db.collection('tweets')
-    const query = tweetsRef.where('user_id', '==', userId)
-    const tweetIds = await getTweetBounds(query)
-    console.log(tweetIds)
-    console.log('?')
-
-    await getTweets({since_id: tweetIds.newest}, tweets => {
-      if (tweets.length) addTweets(tweets)
-      else getTweets({max_id: tweetIds.oldest}, tweets => addTweets(tweets))
-    })
-
-    resolve()
   })
+  const addTweets = tweets => tweets.forEach(async tweet => {
+    await tweetsRef.doc(tweet.id_str).set({
+      id: tweet.id,
+      body: tweet.text,
+      user_id: await userId
+    })
+  })
+
+  const userId = new Promise((resolve, reject) => twitter.get(
+    'users/show',
+    {screen_name: process.env.TWITTER_USER},
+    (err, user, _res) => {
+      if (err) reject(new Error(err))
+      resolve(user.id)
+    }
+  ))
+  const bounds = await getBounds(tweetsBy(await userId))
+  await addTweets([
+    ...await fetchTweets({since_id: bounds.newest}),
+    ...await fetchTweets({max_id: bounds.oldest})
+  ])
+  await db.doc(`users/${await userId}`).set({ingested: new Date()})
+}
+
+const compose = id => new Promise(async resolve => {
+  const seeds = (await (await tweetsBy(id)).get()).docs.map(x => `${x.data().body}\n`)
+  const save = async tweet => {
+    await db.doc(`drafts/${id}`).set({body: tweet})
+    resolve(tweet)
+  }
+  const cb = () => {
+    const tweet = m.forward(m.pick(), 10).join(' ')
+    if (tweet.length < 10) cb()
+    else save(tweet)
+  }
+  const m = markov(2)
+  m.seed(intoStream(seeds), cb)
 })
 
-exports.getTweets = functions.pubsub
+exports.ingest = functions.pubsub
   .topic('hourly-tick')
-  .onPublish(msg => {
-    ingestTweets(process.env.TWITTER_USER)
-    return true
-  })
+  .onPublish(ingest)
+
+exports.compose = functions.firestore
+  .document(`users/{userId}`)
+  .onWrite(async (change, ctx) =>
+    change.after.exists && await compose(parseInt(ctx.params.userId))
+  )
