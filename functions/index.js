@@ -82,6 +82,6 @@ exports.ingest = functions.pubsub
 
 exports.compose = functions.firestore
   .document(`users/{userId}`)
-  .onWrite(async (snap, ctx) =>
-    snap.after.exists && await compose(parseInt(ctx.params.userId))
+  .onWrite(async (change, ctx) =>
+    change.after.exists && await compose(parseInt(ctx.params.userId))
   )
